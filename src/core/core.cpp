@@ -567,6 +567,14 @@ struct System::Impl {
         // Reset all glue registrations
         arp_manager.ResetAll();
 
+        // The guest RAM section keeps every page the game touched until it is destroyed (up to
+        // 12 GiB), and the next Load reuses it. Switch 2 only: Switch 1 keeps its behaviour.
+        // ReinitializeIfNecessary treats the empty slot as a full reinitialization, which creates
+        // it again sized for the next game (Eglantine PR #634).
+        if (Settings::CurrentProgramIsSwitch2()) {
+            device_memory.reset();
+        }
+
         LOG_DEBUG(Core, "Shutdown OK");
     }
 

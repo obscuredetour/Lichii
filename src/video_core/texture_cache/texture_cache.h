@@ -266,10 +266,10 @@ void TextureCache<P>::RunGarbageCollector(bool out_of_memory) {
 
 template <class P>
 void TextureCache<P>::ApplyThresholdOverrides(bool log) {
-    // On every GPU: past what a frame needs, more device memory only keeps the textures of earlier
-    // scenes (title 1 filled 6.7 GB of an 8 GB card and draws its races in ~5 GB), so collect from
-    // MaxCriticalMemory on rather than near the card's budget.
-    critical_memory = (std::min)(critical_memory, MaxCriticalMemory);
+    // Past what a frame needs, more device memory only keeps the textures of earlier scenes
+    // (title 1 filled 6.7 GB of an 8 GB card and draws its races in ~5 GB), so collect from the
+    // card's cap on rather than near its budget (ScaledCriticalCap; 5 GiB on 8 GB cards).
+    critical_memory = (std::min)(critical_memory, max_critical_memory);
     expected_memory =
         (std::min)(expected_memory, critical_memory - (std::min)(critical_memory, u64{768_MiB}));
     minimum_memory =
@@ -306,6 +306,7 @@ void TextureCache<P>::TickFrame() {
             const u64 device_local = runtime.GetDeviceLocalMemory();
             critical_memory = (std::max)(critical_memory, device_local - 256_MiB);
             expected_memory = (std::max)(expected_memory, device_local - 1280_MiB);
+            max_critical_memory = ScaledCriticalCap(device_local);
             ApplyThresholdOverrides();
             native_critical_memory = critical_memory;
             native_expected_memory = expected_memory;
@@ -358,11 +359,14 @@ void TextureCache<P>::TickFrame() {
                     critical_memory =
                         budget - (std::min)(margin + pressure_margin + slack_margin, budget / 2);
                     expected_memory = critical_memory - (std::min)(margin, critical_memory / 2);
+                    max_critical_memory = ScaledCriticalCap(budget);
                     // Log the first values and real changes (the budget moves by a few MiB all
-                    // the time).
-                    const u64 change = critical_memory > old_critical
-                                           ? critical_memory - old_critical
-                                           : old_critical - critical_memory;
+                    // the time). Compared after the cap: before it, a capped card logged every
+                    // 30 frames because the uncapped figure always differed from the capped one.
+                    const u64 capped_critical = (std::min)(critical_memory, max_critical_memory);
+                    const u64 change = capped_critical > old_critical
+                                           ? capped_critical - old_critical
+                                           : old_critical - capped_critical;
                     const bool log = budget_check_frames == 1 || change >= 256_MiB;
                     ApplyThresholdOverrides(log);
                     if (log) {

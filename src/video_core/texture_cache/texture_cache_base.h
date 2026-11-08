@@ -136,6 +136,7 @@ class TextureCache : public VideoCommon::ChannelSetupCaches<TextureCacheChannelI
     bool native_thresholds_applied{};
     u64 native_critical_memory{};
     u64 native_expected_memory{};
+    u64 max_critical_memory{MaxCriticalMemory}; ///< Cap for this card (ScaledCriticalCap)
     u64 budget_check_frames{};
     u32 seen_pressure_events{};   ///< Allocator pressure events already answered
     u32 seen_failed_images{};     ///< Images the allocator could not make, already collected for
@@ -151,9 +152,17 @@ class TextureCache : public VideoCommon::ChannelSetupCaches<TextureCacheChannelI
 
     static constexpr s64 DEFAULT_EXPECTED_MEMORY = 1_GiB + 125_MiB;
     static constexpr s64 DEFAULT_CRITICAL_MEMORY = 1_GiB + 625_MiB;
-    /// The most device memory the collector lets the cache fill before it collects in earnest,
-    /// on every GPU (ApplyThresholdOverrides).
+    /// The most device memory the collector lets the cache fill before it collects in earnest
+    /// on a card with 8 GB or less; larger cards scale it (ApplyThresholdOverrides).
     static constexpr u64 MaxCriticalMemory = 5_GiB;
+    /// The cap for a card whose budget (or local memory) is `device_memory`: 5/8 of it, at least
+    /// MaxCriticalMemory. The 5 GiB cap on every GPU made a 16 GB card recreate textures it had
+    /// room for (Ocarina of Time: frames over 100 ms every 10 s, none with the cap at 10 GB), and
+    /// a 12 GB card ran best at 6.5-7.3 GB (Eglantine issue #498). 16 GB: ~9 GB; 12 GB: ~7 GB.
+    static constexpr u64 ScaledCriticalCap(u64 device_memory) {
+        const u64 scaled = device_memory / 8 * 5;
+        return scaled > MaxCriticalMemory ? scaled : MaxCriticalMemory;
+    }
     static constexpr size_t GC_EMERGENCY_COUNTS = 2;
 
     using Runtime = typename P::Runtime;
